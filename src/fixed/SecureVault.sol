@@ -43,11 +43,16 @@ contract SecureVault is ReentrancyGuard {
         // contract, so there is nothing left to drain on re-entry.
         balances[msg.sender] = 0;
 
+        // The log is an effect too. Emitting it after the interaction is what
+        // `forge lint` reports as `reentrancy-events`: a re-entrant frame can
+        // reorder or fabricate the log sequence that off-chain consumers rely
+        // on. Harmless here - a failed call reverts the transaction and the log
+        // with it - but a contract presented as the fix should be lint-clean.
+        emit Withdrawn(msg.sender, amount);
+
         // Interaction last.
         (bool ok,) = msg.sender.call{value: amount}("");
         require(ok, "SecureVault: transfer failed");
-
-        emit Withdrawn(msg.sender, amount);
     }
 
     /// @notice Balance credited to `account`.

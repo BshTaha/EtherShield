@@ -45,13 +45,11 @@ contract RoleBasedConfigAttacker {
 
         // Step 1: the door that used to be unlocked. transferOwnership is now
         // inherited and onlyOwner, so this reverts for a stranger.
-        config.transferOwnership(address(this));
         emit Hijacked(address(this));
+        config.transferOwnership(address(this));
 
         // Step 2: unreachable. Kept so the two attackers stay comparable.
-        uint256 amount = config.totalAssets();
         config.sweep(address(this));
-        emit Drained(amount);
     }
 
     /// @notice Try to accept an ownership transfer we were never nominated for.
@@ -62,7 +60,11 @@ contract RoleBasedConfigAttacker {
     }
 
     /// @notice Accept any swept treasury (never called in the fixed scenario).
-    receive() external payable {}
+    /// @dev Never fires: the attack reverts at step 1. Mirrors the
+    ///      AccessControlAttacker shape so the two files stay comparable.
+    receive() external payable {
+        emit Drained(msg.value);
+    }
 
     /// @notice Forward stolen ETH to the attacker's EOA.
     function collect() external {

