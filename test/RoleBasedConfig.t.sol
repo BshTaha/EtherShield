@@ -157,4 +157,49 @@ contract RoleBasedConfigTest is Test {
         assertEq(config.totalAssets(), 0, "treasury emptied deliberately");
         assertEq(feeRecipient.balance, TREASURY, "3 ETH landed where the owner sent it");
     }
+
+    /// @notice The mirror: no address at all can take ownership of the fixed
+    ///         contract. Ownable rejects every caller but the owner, and it
+    ///         names the rejected account in the error - so this also proves the
+    ///         RIGHT caller was rejected, not merely that something reverted.
+    function testFuzz_noStrangerCanSeizeOwnership(address stranger) public {
+        vm.assume(stranger != admin);
+
+        vm.prank(stranger);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, stranger));
+        config.transferOwnership(stranger);
+
+        assertEq(config.owner(), admin, "owner unchanged");
+        assertEq(config.pendingOwner(), address(0), "no nomination recorded");
+        assertEq(config.totalAssets(), TREASURY, "treasury intact");
+    }
+
+    /// @notice TRIAGED NON-ISSUE, pinned here so it is not rediscovered as a
+    ///         bug. OpenZeppelin's Ownable2Step compares `pendingOwner()` with
+    ///         `msg.sender`, and `pendingOwner()` is address(0) until someone is
+    ///         nominated - so a call whose sender IS address(0) passes the check
+    ///         and takes ownership, leaving the contract ownerless.
+    /// @dev Why it is not a vulnerability: no transaction can originate from
+    ///      address(0). It has no private key, and the EVM never sets msg.sender
+    ///      to it for a real call. The only way to produce this is vm.prank,
+    ///      which is why the invariant handler in
+    ///      test/invariant/ConfigOwnershipInvariant.t.sol excludes address(0)
+    ///      from its hostile senders - it found this first, and reported it as a
+    ///      broken invariant. If belt-and-braces hardening were ever wanted, an
+    ///      override requiring `pendingOwner() != address(0)` would close it.
+    function test_zeroAddressAcceptanceIsAnArtefactNotAFinding() public {
+        assertEq(config.pendingOwner(), address(0), "no nomination outstanding");
+
+        vm.prank(address(0));
+        config.acceptOwnership();
+
+        assertEq(config.owner(), address(0), "ownership moved to the zero address");
+        assertEq(config.pendingOwner(), address(0), "pending slot cleared");
+
+        // And the consequence, for the record: the config is now ownerless, so
+        // the original admin can no longer administer it.
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, admin));
+        config.sweep(admin);
+    }
 }

