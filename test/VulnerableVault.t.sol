@@ -103,4 +103,27 @@ contract VulnerableVaultTest is Test {
         vm.expectRevert(ReentrancyAttacker.NotOwner.selector);
         attacker.collect();
     }
+
+    /// @notice The drain is not an artefact of the 1-ETH worked example. For ANY
+    ///         stake the attacker funds the attack with, the vault is emptied
+    ///         down to `pot % unit` - the remainder too small to pay one more
+    ///         re-entrant withdrawal - and the attacker keeps everything else
+    ///         plus its own stake.
+    /// @dev The stake is bounded to [0.1, 1] ETH to keep the re-entrancy depth
+    ///      inside the block gas limit: each frame costs roughly 9.4k gas, and
+    ///      0.1 ETH units against a 3 ETH pot means 31 withdrawals. Far below
+    ///      that the attack runs out of gas and reverts WHOLE - the drain is
+    ///      all-or-nothing, never partial.
+    function testFuzz_drainLeavesOnlyTheRemainder(uint96 stake) public {
+        uint256 unit = bound(uint256(stake), 0.1 ether, 1 ether);
+        uint256 pot = 3 * DEPOSIT;
+
+        vm.deal(attackerEoa, unit);
+        vm.prank(attackerEoa);
+        attacker.attack{value: unit}();
+
+        assertEq(vault.totalAssets(), pot % unit, "only the unpayable remainder is left behind");
+        assertEq(attacker.loot(), pot + unit - (pot % unit), "attacker holds the pot plus its own stake");
+        assertEq(attacker.callCount(), pot / unit + 1, "one withdrawal per unit, plus the first");
+    }
 }

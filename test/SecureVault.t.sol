@@ -147,4 +147,24 @@ contract SecureVaultTest is Test {
         }
         assertEq(vault.totalAssets(), 0, "vault empties cleanly to zero");
     }
+
+    /// @notice The mirror of the vulnerable suite's fuzz test: whatever the
+    ///         attacker stakes, the attack reverts whole and the vault keeps
+    ///         exactly what the honest depositors put in. There is no stake that
+    ///         gets anything out.
+    function testFuzz_attackRevertsForAnyStake(uint96 stake) public {
+        uint256 unit = bound(uint256(stake), 0.1 ether, 1 ether);
+
+        vm.deal(attackerEoa, unit);
+        vm.prank(attackerEoa);
+        vm.expectRevert("SecureVault: transfer failed");
+        attacker.attack{value: unit}();
+
+        assertEq(vault.totalAssets(), 3 * DEPOSIT, "vault still holds exactly 3 ETH");
+        assertEq(attacker.loot(), 0, "exploit contract got nothing");
+        assertEq(attackerEoa.balance, unit, "attacker keeps only its own stake");
+        for (uint256 i = 0; i < depositors.length; i++) {
+            assertEq(vault.balanceOf(depositors[i]), DEPOSIT, "depositor credit untouched");
+        }
+    }
 }
